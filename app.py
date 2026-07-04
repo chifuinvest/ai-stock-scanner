@@ -8,7 +8,7 @@ import time, random
 import warnings
 warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="AI+硬科技选股系统", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="AI硬科技股票打分系统", page_icon="🤖", layout="wide")
 
 # ── 完整AI+硬科技股票池（80只）────────────────────────────────
 FULL_STOCKS = {
@@ -62,9 +62,9 @@ custom_stocks = {}
 def get_kline(code):
     try:
         df = yf.Ticker(code).history(
-            start=(datetime.now()-timedelta(days=460)).strftime('%Y-%m-%d'),
+            start=(datetime.now()-timedelta(days=470)).strftime('%Y-%m-%d'),
             end=datetime.now().strftime('%Y-%m-%d'), auto_adjust=True)
-        if df is None or len(df) < 270:
+        if df is None or len(df) < 278:
             return None
         df = df.rename(columns={'Close':'close','Open':'open','High':'high','Low':'low','Volume':'volume'})
         df.index = pd.to_datetime(df.index)
@@ -86,10 +86,10 @@ def score_stock(df):
     c,v = df['close'],df['volume']
     rsi=calc_rsi(c)
     if pd.isna(rsi): sr=0
-    elif 40<=rsi<=76: sr=2
+    elif 40<=rsi<=77: sr=2
     elif 34<=rsi<48: sr=1
-    elif rsi>122 or rsi<13: sr=-2
-    elif rsi>110: sr=-1
+    elif rsi>125 or rsi<12: sr=-2
+    elif rsi>113: sr=-1
     else: sr=0
     mh=calc_macd_hist(c)
     if pd.isna(mh): sm=0
@@ -110,8 +110,8 @@ def score_stock(df):
     else: vr=1
     sv=1 if 1.2<=vr<=2.0 else (-1 if vr>2.5 else 0)
     chg5=((c.iloc[-1]-c.iloc[-6])/c.iloc[-6])*100 if len(c)>6 else 0
-    chgH=((c.iloc[-1]-c.iloc[-167])/c.iloc[-167])*100 if len(c)>173 else 0
-    schg=(1 if 5<=chg5<=19 else -1 if chg5>44 else 0)+(1 if 20<=chgH<=117 else -1 if chgH>342 else 0)
+    chgH=((c.iloc[-1]-c.iloc[-171])/c.iloc[-171])*100 if len(c)>177 else 0
+    schg=(1 if 5<=chg5<=19 else -1 if chg5>47 else 0)+(1 if 20<=chgH<=121 else -1 if chgH>355 else 0)
     total=sr+sm+sma+sv+schg
     return total,sr,sm,sma,sv,schg,rsi
 
@@ -134,7 +134,7 @@ def scan_stocks(stock_list):
     for it in stock_list:
         code,name = (it['code'],it['name']) if isinstance(it,dict) else (it,FULL_STOCKS.get(it,it))
         df=get_kline(code)
-        if df is None or len(df)<270:
+        if df is None or len(df)<278:
             rows.append({'代码':code.split('.')[0],'名称':name,'最新价':'-','总分':'-',
                          '信号':'❌ 无数据','RSI':'-','24h':'-','7日':'-','30日':'-','12月':'-'})
             continue
@@ -147,7 +147,7 @@ def scan_stocks(stock_list):
         rows.append({'代码':code.split('.')[0],'名称':name,'最新价':f'¥{p:.2f}','总分':total,
                      '信号':get_signal(total),'RSI':f'{rsi:.1f}',
                      '24h':fmt_pct(chg1),'7日':fmt_pct(chg7),'30日':fmt_pct(chg30),'12月':fmt_pct(chg12)})
-        time.sleep(0.06)
+        time.sleep(0.05)
     dfr=pd.DataFrame(rows)
     if '总分' in dfr.columns:
         ok=dfr[dfr['总分']!='-'].copy(); ng=dfr[dfr['总分']=='-'].copy()
@@ -162,7 +162,7 @@ def auto_select():
         df=get_kline(code)
         if df is None: failed.append(code); continue
         t,*_=score_stock(df); scored.append({'code':code,'name':name,'score':t})
-        time.sleep(0.03)
+        time.sleep(0.02)
     scored.sort(key=lambda x:x['score'],reverse=True)
     high=[s for s in scored if s['score']>=4]
     med=[s for s in scored if 0<=s['score']<4]
@@ -176,8 +176,8 @@ def auto_select():
     return sel
 
 # ── UI ────────────────────────────────────────────────────────
-st.title("🤖 AI+硬科技 选股系统")
-st.caption(f"基础池 {len(FULL_STOCKS)}只AI+硬科技股票 · 每日自动选50只 · 多因子打分 · yfinance数据")
+st.title("🤖 AI硬科技股票打分系统")
+st.caption(f"基础池 {len(FULL_STOCKS)}只AI+硬科技股票 · 每日自动选50只 · 多因子技术分析 · yfinance数据")
 
 # 信息栏
 col_info1, col_info2, col_info3, col_info4 = st.columns(4)
@@ -186,30 +186,37 @@ col_info2.metric("🎯 每日精选", "50只")
 col_info3.metric("⚡ 数据源", "Yahoo Finance")
 col_info4.metric("🕐 更新时间", datetime.now().strftime('%m/%d %H:%M'))
 
-# 手动添加区域
-st.markdown("---")
-st.subheader("📌 手动添加自定义股票")
-c1,c2,c3 = st.columns([2,2,1])
-with c1:
-    add_code = st.text_input("添加股票代码（如 600519）", key="add_c")
-    add_name = st.text_input("股票名称（如 贵州茅台）", key="add_n")
-    if st.button("➕ 添加", use_container_width=True):
-        if add_code and add_name:
-            suffix = '.SS' if add_code.startswith('6') or add_code.startswith('688') else '.SZ'
-            custom_stocks[add_code+suffix] = add_name
-            st.success(f"已添加 {add_name}({add_code+suffix})")
-with c2:
-    rm_code = st.text_input("移除自定义股票代码", key="rm_c")
-    if st.button("➖ 移除", use_container_width=True):
-        suffix = '.SS' if rm_code.startswith('6') or rm_code.startswith('688') else '.SZ'
-        custom_stocks.pop(rm_code+suffix, None)
-        st.info(f"已尝试移除 {rm_code+suffix}")
-with c3:
-    st.write("")
-    st.write("")
-    run_btn = st.button("🚀 开始扫描 / 重新选股", use_container_width=True, type="primary")
+# ── 手动添加自定义股票（折叠式）──────────────────────────────
+with st.expander("✏️ 手动添加/移除自定义股票（高级功能）"):
+    st.caption("如果你想在系统自动筛选的50只之外，额外关注某些特定股票，可以使用此功能。")
+    c1,c2,c3 = st.columns([2,2,1])
+    with c1:
+        add_code = st.text_input("添加股票代码（如 600519）", key="add_c")
+        add_name = st.text_input("股票名称（如 贵州茅台）", key="add_n")
+        if st.button("➕ 添加", use_container_width=True):
+            if add_code and add_name:
+                suffix = '.SS' if add_code.startswith('6') or add_code.startswith('688') else '.SZ'
+                custom_stocks[add_code+suffix] = add_name
+                st.success(f"已添加 {add_name}({add_code+suffix})")
+    with c2:
+        rm_code = st.text_input("移除自定义股票代码", key="rm_c")
+        if st.button("➖ 移除", use_container_width=True):
+            suffix = '.SS' if rm_code.startswith('6') or rm_code.startswith('688') else '.SZ'
+            custom_stocks.pop(rm_code+suffix, None)
+            st.info(f"已尝试移除 {rm_code+suffix}")
+    with c3:
+        st.write("")
+        st.write("")
+        if custom_stocks:
+            st.info(f"当前已添加 {len(custom_stocks)} 只自定义股票")
+            if st.button("🗑️ 清空全部", use_container_width=True):
+                custom_stocks.clear()
+                st.warning("已清空所有自定义股票")
 
-# 扫描逻辑
+# ── 扫描按钮 ────────────────────────────────────────────────
+run_btn = st.button("🚀 开始扫描 / 重新选股", use_container_width=True, type="primary")
+
+# ── 扫描逻辑 ────────────────────────────────────────────────
 if run_btn or 'df_result' not in st.session_state:
     with st.spinner("正在从 Yahoo Finance 获取数据，请稍候（约30~50秒）..."):
         sel = auto_select()
@@ -280,8 +287,8 @@ with st.expander("点击展开详细使用说明"):
 
 ### 📝 操作指南
 1. **点击「开始扫描」**：系统自动从80只中选出最优50只并打分
-2. **添加自定义股票**：输入代码和名称，可添加任意A股
-3. **移除自定义股票**：输入代码即可移除
+2. **添加自定义股票**：展开「手动添加」区域，输入代码和名称
+3. **移除自定义股票**：在「手动添加」区域输入代码即可移除
 4. **刷新页面**：重新获取最新数据
 
 ### ⚠️ 注意事项
@@ -309,7 +316,7 @@ st.markdown("""
 # 底部
 st.markdown("""
 <div style="text-align:center;padding:12px 0;font-size:12px;color:#90a4ae;">
-    🤖 AI+硬科技选股系统 · 仅供学习研究 · 不构成投资建议
+    🤖 AI硬科技股票打分系统 · 仅供学习研究 · 不构成投资建议
     <br>
     © 2025 · Powered by Streamlit & Yahoo Finance
 </div>
